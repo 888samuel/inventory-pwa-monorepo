@@ -16,3 +16,19 @@ export async function hasPermission(client, membership, code) {
   );
   return result.rows.length > 0;
 }
+
+export async function permissionCodes(client, membership) {
+  if (!membership) return [];
+  if (membership.role === 'owner') {
+    const result = await client.query(`SELECT code FROM permissions ORDER BY code`);
+    return result.rows.map((row) => row.code);
+  }
+  const result = await client.query(
+    `SELECT permission_code AS code
+     FROM membership_permissions
+     WHERE membership_id = $1
+     ORDER BY permission_code`,
+    [membership.id]
+  );
+  return result.rows.map((row) => row.code);
+}

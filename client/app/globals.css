@@ -3,7 +3,33 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: #f8fafc;
-  color: #0f172a;
+  background: #090d16;
+  color: #e2e8f0;
   font-family: "Segoe UI", sans-serif;
 }
+
+.workspace .bg-white { background-color: #0f1523; }
+.workspace .bg-slate-50 { background-color: #111827; }
+.workspace .bg-slate-100 { background-color: #172033; }
+.workspace .bg-slate-900 { background-color: #4f46e5; }
+.workspace .text-slate-900 { color: #f8fafc; }
+.workspace .text-slate-800,
+.workspace .text-teal-800 { color: #e2e8f0; }
+.workspace .text-slate-700,
+.workspace .text-slate-600 { color: #cbd5e1; }
+.workspace .text-slate-500,
+.workspace .text-slate-400 { color: #94a3b8; }
+.workspace .text-red-700 { color: #fca5a5; }
+.workspace .border-slate-200,
+.workspace .divide-slate-200 > :not(:last-child) { border-color: rgb(30 41 59 / 0.9); }
+.workspace .border-slate-300 { border-color: #334155; }
+.workspace input,
+.workspace select,
+.workspace textarea {
+  background-color: #172033;
+  color: #f8fafc;
+  border-color: #334155;
+}
+.workspace input::placeholder,
+.workspace textarea::placeholder { color: #64748b; }
+.workspace option { background-color: #111726; color: #f8fafc; }

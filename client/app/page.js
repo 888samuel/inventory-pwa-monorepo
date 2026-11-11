@@ -5,6 +5,54 @@ import { ExcelImport } from './excel-import';
 import { PurchaseScreen } from './purchase';
 import { TransferScreen } from './transfer';
 import { StaffScreen } from './staff';
+import { ReportScreen } from './report';
+import { SettingsScreen } from './settings';
+import { BankField } from './bank-field';
+
+const barColors = ['bg-emerald-500', 'bg-indigo-500', 'bg-violet-500', 'bg-sky-500', 'bg-amber-500'];
+const roleName = { owner: 'Owner', manager: 'Manager', cashier: 'Cashier' };
+
+function periodBounds(salesWhen, customDate) {
+  if (salesWhen === 'custom' && customDate) {
+    const start = new Date(`${customDate}T00:00:00`);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  if (salesWhen === 'week') start.setDate(start.getDate() - 6);
+  if (salesWhen === 'month') start.setDate(start.getDate() - 29);
+  return { start, end };
+}
+
+function Icon({ name, className = 'h-4 w-4' }) {
+  const paths = {
+    dashboard: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
+    reports: 'M4 19V10M10 19V5M16 19v-7M22 19H2',
+    shops: 'M3 10l9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+    products: 'M21 8l-9-5-9 5 9 5 9-5zM3 8v8l9 5 9-5V8M12 13v8',
+    inventory: 'M3 7h18v13H3zM3 7l2-4h14l2 4M8 11h8',
+    sales: 'M4 16l5-5 4 4 7-8M14 7h6v6',
+    purchases: 'M6 7h15l-1.5 9h-12zM6 7L5 4H2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2z',
+    transfers: 'M7 7h11M15 4l3 3-3 3M17 17H6M9 14l-3 3 3 3',
+    customers: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+    suppliers: 'M1 16V6h13v10M14 9h5l3 3v4h-8M5.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z',
+    users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6',
+    settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+    search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3',
+    logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+    plus: 'M12 5v14M5 12h14',
+    bell: 'M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9M10 21a2 2 0 0 0 4 0',
+  };
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={paths[name]} />
+    </svg>
+  );
+}
 
 export default function HomePage() {
   const [mode, setMode] = useState('login');
@@ -43,6 +91,11 @@ export default function HomePage() {
   const [saleBank, setSaleBank] = useState('');
   const [nextInvoice, setNextInvoice] = useState(null);
   const [saleView, setSaleView] = useState('record');
+  const [listShop, setListShop] = useState('all');
+  const [listInvoice, setListInvoice] = useState('');
+  const [listDate, setListDate] = useState('');
+  const [completedSales, setCompletedSales] = useState([]);
+  const [listNote, setListNote] = useState(null);
   const [creditShop, setCreditShop] = useState('');
   const [creditInvoice, setCreditInvoice] = useState('');
   const [creditApplied, setCreditApplied] = useState('');
@@ -74,9 +127,15 @@ export default function HomePage() {
     const day = String(now.getDate()).padStart(2, '0');
     return `${now.getFullYear()}-${month}-${day}`;
   });
-  const [sales, setSales] = useState({ units: 0, cents: 0, bars: [] });
+  const [sales, setSales] = useState({ units: 0, cents: 0, invoices: 0, bars: [], shops: [] });
+  const [recentSales, setRecentSales] = useState([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(0);
   const [salesNote, setSalesNote] = useState(null);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [company, setCompany] = useState({ priceMode: 'dynamic', banks: [] });
 
   async function loadShops() {
     const response = await fetch('/api/branches', { credentials: 'include' });
@@ -133,16 +192,20 @@ export default function HomePage() {
     setUnits(Array.isArray(data) ? data : []);
   }
 
+  async function loadSettings() {
+    const response = await fetch('/api/settings', { credentials: 'include' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return;
+    setCompany({
+      priceMode: data.priceMode === 'fixed' ? 'fixed' : 'dynamic',
+      banks: Array.isArray(data.banks) ? data.banks : [],
+    });
+  }
+
   useEffect(() => {
     if (!user) return undefined;
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const date = salesWhen === 'today' ? `${now.getFullYear()}-${month}-${day}` : customDate;
-    if (!date) return undefined;
-    const start = new Date(`${date}T00:00:00`);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    const { start, end } = periodBounds(salesWhen, customDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return undefined;
     const params = new URLSearchParams({ from: start.toISOString(), to: end.toISOString() });
     if (salesShop !== 'all') params.set('shop', salesShop);
     let cancelled = false;
@@ -151,7 +214,7 @@ export default function HomePage() {
         const data = await response.json().catch(() => ({}));
         if (cancelled) return;
         if (!response.ok) {
-          setSales({ units: 0, cents: 0, bars: [] });
+          setSales({ units: 0, cents: 0, invoices: 0, bars: [], shops: [] });
           setSalesNote(response.status === 404 ? 'Sales report is not connected yet.' : (data.error || 'Sales report is not available yet'));
           return;
         }
@@ -159,7 +222,9 @@ export default function HomePage() {
         setSales({
           units: data.units ?? 0,
           cents: data.cents ?? 0,
+          invoices: data.invoices ?? 0,
           bars: Array.isArray(data.bars) ? data.bars : [],
+          shops: Array.isArray(data.shops) ? data.shops : [],
         });
       })
       .catch(() => {
@@ -169,6 +234,70 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [user, salesShop, salesWhen, customDate, salesRevision]);
+
+  useEffect(() => {
+    if (!user || section !== 'dashboard') return undefined;
+    const params = new URLSearchParams({
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
+    let cancelled = false;
+    fetch(`/api/sales/completed?${params}`, { credentials: 'include' })
+      .then(async (response) => {
+        const data = await response.json().catch(() => []);
+        if (!cancelled) setRecentSales(response.ok && Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRecentSales([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, section, salesRevision]);
+
+  useEffect(() => {
+    function onKey(event) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setSearchOpen((open) => !open);
+      } else if (event.key === 'Escape') {
+        setSearchOpen(false);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    let cancelled = false;
+    async function loadNotes() {
+      const response = await fetch('/api/notifications', { credentials: 'include' });
+      const data = await response.json().catch(() => []);
+      if (!cancelled && response.ok && Array.isArray(data)) setNotifications(data);
+    }
+    loadNotes();
+    const timer = setInterval(loadNotes, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [user, salesRevision]);
+
+  async function openNotification(note) {
+    setNotesOpen(false);
+    if (!note.readAt) {
+      const response = await fetch(`/api/notifications/${note.id}/read`, { method: 'POST', credentials: 'include' });
+      if (response.ok) {
+        setNotifications((list) => list.map((item) => (
+          item.id === note.id ? { ...item, readAt: new Date().toISOString() } : item
+        )));
+      }
+    }
+    if (note.kind === 'transfer.accept') {
+      setSection('transfers');
+      setTransferOpen((opened) => opened + 1);
+    }
+  }
 
   useEffect(() => {
     if (!user) return undefined;
@@ -228,6 +357,47 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [user, saleShopName, salesRevision]);
+
+  useEffect(() => {
+    if (!user || saleView !== 'list') return undefined;
+    const invoice = listInvoice.trim();
+    if (invoice && !/^\d+$/.test(invoice)) {
+      setCompletedSales([]);
+      setListNote('Invoice number must be a whole number');
+      return undefined;
+    }
+    const params = new URLSearchParams({
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
+    if (listShop !== 'all') params.set('shop', listShop);
+    if (invoice) params.set('invoice', invoice);
+    if (listDate) params.set('date', listDate);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch(`/api/sales/completed?${params}`, { credentials: 'include' })
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (cancelled) return;
+          if (!response.ok) {
+            setCompletedSales([]);
+            setListNote(data.error || 'Completed sales are not available yet');
+            return;
+          }
+          setListNote(null);
+          setCompletedSales(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCompletedSales([]);
+            setListNote('Completed sales are not available yet');
+          }
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [user, saleView, listShop, listInvoice, listDate, salesRevision]);
 
   useEffect(() => {
     if (!user || saleView !== 'credit' || !creditShop) return undefined;
@@ -298,6 +468,7 @@ export default function HomePage() {
       await loadCustomers();
       await loadSuppliers();
       await loadUnits();
+      await loadSettings();
     } catch (err) {
       setError(err.message);
     }
@@ -380,6 +551,10 @@ export default function HomePage() {
     event.preventDefault();
     setError(null);
     const price = unitPrice.trim();
+    if (company.priceMode === 'fixed' && !price) {
+      setError('Enter a price. Prices are set on the product.');
+      return;
+    }
     const response = await fetch('/api/products', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -465,8 +640,15 @@ export default function HomePage() {
       setError('A walking customer cannot buy on credit');
       return;
     }
-    const typedPrice = salePrice.trim();
-    if (!/^\d+(\.\d{1,2})?$/.test(typedPrice)) {
+    const typedPrice = company.priceMode === 'fixed'
+      ? (product.unit_price == null ? '' : (Number(product.unit_price) / 100).toFixed(2))
+      : salePrice.trim();
+    if (company.priceMode === 'fixed') {
+      if (product.unit_price == null) {
+        setError('Set a price on this product');
+        return;
+      }
+    } else if (!/^\d+(\.\d{1,2})?$/.test(typedPrice)) {
       setError('Enter a unit price like 45.34');
       return;
     }
@@ -480,8 +662,8 @@ export default function HomePage() {
         return;
       }
     }
-    if (salePayment === 'transfer' && !saleBank.trim()) {
-      setError('Type the bank name');
+    if (salePayment === 'transfer' && !saleBank) {
+      setError('Choose a bank');
       return;
     }
     if (quantity > available) {
@@ -499,7 +681,7 @@ export default function HomePage() {
         unit: saleUnit,
         quantity,
         payment: salePayment,
-        bankName: salePayment === 'transfer' ? saleBank.trim() : undefined,
+        bankName: salePayment === 'transfer' ? saleBank : undefined,
         creditKind: salePayment === 'credit' ? saleCreditKind : undefined,
         paidNow: salePayment === 'credit' && saleCreditKind === 'partial' ? salePaidNow.trim() : undefined,
         unitPrice: typedPrice,
@@ -527,8 +709,8 @@ export default function HomePage() {
       setError('Choose an invoice');
       return;
     }
-    if (creditPayMethod === 'transfer' && !creditPayBank.trim()) {
-      setError('Type the bank name');
+    if (creditPayMethod === 'transfer' && !creditPayBank) {
+      setError('Choose a bank');
       return;
     }
     const response = await fetch('/api/sales/credit', {
@@ -539,7 +721,7 @@ export default function HomePage() {
         saleId: creditPayId,
         amount: creditPayAmount.trim(),
         payment: creditPayMethod,
-        bankName: creditPayMethod === 'transfer' ? creditPayBank.trim() : undefined,
+        bankName: creditPayMethod === 'transfer' ? creditPayBank : undefined,
       }),
     });
     const data = await response.json().catch(() => ({}));
@@ -560,6 +742,8 @@ export default function HomePage() {
   async function onLogout() {
     await fetch('/api/logout', { method: 'POST', credentials: 'include' });
     setUser(null);
+    setNotifications([]);
+    setNotesOpen(false);
     setShops([]);
     setProducts([]);
     setCustomers([]);
@@ -568,26 +752,55 @@ export default function HomePage() {
     setCreditShop('');
     setStockShop('all');
     setSalesShop('all');
+    setCompany({ priceMode: 'dynamic', banks: [] });
     setSection('dashboard');
     setError(null);
   }
 
   if (user) {
+    const permissions = new Set(Array.isArray(user.permissions) ? user.permissions : []);
     const nav = [
-      { id: 'dashboard', label: 'Dashboard' },
-      { id: 'shops', label: 'Shops' },
-      { id: 'products', label: 'Products' },
-      { id: 'inventory', label: 'Inventory' },
-      { id: 'sales', label: 'Sales' },
-      { id: 'purchases', label: 'Purchases' },
-      { id: 'transfers', label: 'Transfer' },
-      { id: 'customers', label: 'Customers' },
-      { id: 'suppliers', label: 'Suppliers' },
-      { id: 'users', label: 'Users' },
-    ];
+      { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { id: 'reports', label: 'Reports', icon: 'reports', permission: 'report' },
+      { id: 'shops', label: 'Shops', icon: 'shops' },
+      { id: 'products', label: 'Products', icon: 'products' },
+      { id: 'inventory', label: 'Inventory', icon: 'inventory' },
+      { id: 'sales', label: 'Sales', icon: 'sales' },
+      { id: 'purchases', label: 'Purchases', icon: 'purchases' },
+      { id: 'transfers', label: 'Transfer', icon: 'transfers' },
+      { id: 'customers', label: 'Customers', icon: 'customers' },
+      { id: 'suppliers', label: 'Suppliers', icon: 'suppliers' },
+      { id: 'users', label: 'Users', icon: 'users' },
+      { id: 'settings', label: 'Settings', icon: 'settings', permission: 'settings.manage' },
+    ].filter((item) => !item.permission || permissions.has(item.permission));
     const money = (cents) => (Number(cents) / 100).toFixed(2);
-    const tallest = sales.bars.reduce((max, bar) => Math.max(max, Number(bar.cents) || 0), 0);
     const today = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const counts = {
+      shops: shops.length || null,
+      products: products.length || null,
+      customers: customers.length || null,
+    };
+    const currentNav = nav.find((item) => item.id === section) || nav[0];
+    const initials = user.name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'U';
+    const companyName = user.organization_name || 'Inventory';
+    const unreadNotes = notifications.filter((note) => !note.readAt).length;
+    const periodLabel = salesWhen === 'week' ? 'Last 7 days' : salesWhen === 'month' ? 'Last 30 days' : salesWhen === 'custom' ? customDate : 'Today';
+    const averageCents = sales.invoices > 0 ? Math.round(Number(sales.cents) / Number(sales.invoices)) : 0;
+    const shopTotals = new Map(sales.shops.map((shop) => [shop.name, shop]));
+    const bounds = periodBounds(salesWhen, customDate);
+    const visibleRecent = recentSales.filter((sale) => {
+      const at = new Date(sale.soldAt);
+      const inRange = at >= bounds.start && at < bounds.end;
+      const inShop = salesShop === 'all' || sale.shop === salesShop;
+      return inRange && inShop;
+    });
+    const needle = searchQuery.trim().toLowerCase();
+    const searchResults = [
+      ...nav.filter((item) => !needle || item.label.toLowerCase().includes(needle)).map((item) => ({ kind: 'Page', label: item.label, id: item.id })),
+      ...shops.filter((shop) => !needle || shop.name.toLowerCase().includes(needle)).map((shop) => ({ kind: 'Shop', label: shop.name, id: 'shops' })),
+      ...products.filter((product) => !needle || product.name.toLowerCase().includes(needle)).map((product) => ({ kind: 'Product', label: product.name, id: 'products' })),
+      ...customers.filter((customer) => !needle || customer.name.toLowerCase().includes(needle)).map((customer) => ({ kind: 'Customer', label: customer.name, id: 'customers' })),
+    ].slice(0, 8);
     const unitChoices = units.length > 0 ? units : [
       { code: 'pcs', name: 'Piece' },
       { code: 'carton', name: 'Carton' },
@@ -604,120 +817,323 @@ export default function HomePage() {
     const productChoices = products.filter((product) => !productNeedle || (saleProduct && productNeedle === saleProduct.name.toLowerCase()) || product.name.toLowerCase().includes(productNeedle));
     const saleOnHand = saleStock.find((item) => String(item.id) === String(saleProductId));
     const saleAvailable = saleOnHand?.quantity ?? 0;
-    const unitCents = !saleProduct
-      ? 0
-      : (/^\d+(\.\d{1,2})?$/.test(salePrice.trim()) ? Math.round(Number(salePrice.trim()) * 100) : 0);
+    const priceSource = !saleProduct
+      ? ''
+      : (company.priceMode === 'fixed'
+        ? (saleProduct.unit_price == null ? '' : (Number(saleProduct.unit_price) / 100).toFixed(2))
+        : salePrice.trim());
+    const unitCents = /^\d+(\.\d{1,2})?$/.test(priceSource) ? Math.round(Number(priceSource) * 100) : 0;
     const qtyNumber = Number(saleQty);
     const totalCents = Number.isInteger(qtyNumber) && qtyNumber > 0 ? unitCents * qtyNumber : 0;
     const saleTotal = totalCents / 100;
     const paidNowCents = /^\d+(\.\d{1,2})?$/.test(salePaidNow.trim()) ? Math.round(Number(salePaidNow.trim()) * 100) : null;
 
     return (
-      <div className="flex min-h-screen">
-        <aside className="flex w-60 shrink-0 flex-col bg-slate-900 px-4 py-6 text-white">
-          <p className="text-xs font-medium tracking-wide text-slate-400 uppercase">Inventory</p>
-          <p className="mt-2 text-lg font-semibold">{user.name}</p>
-          <button
-            type="button"
-            className="mt-4 rounded border border-slate-500 px-3 py-2 text-left text-sm text-white"
-            onClick={onLogout}
-          >
-            Log out
-          </button>
-          <nav className="mt-8 flex flex-col gap-1">
-            {nav.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`rounded px-3 py-2 text-left text-sm ${section === item.id ? 'bg-white text-slate-900' : 'text-slate-200 hover:bg-slate-800'}`}
-                onClick={() => setSection(item.id)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
-        <main className="min-w-0 flex-1 px-8 py-8">
-          {error && <p className="mb-4 text-sm text-red-700">{error}</p>}
-          {section === 'dashboard' && (
-            <div className="max-w-3xl">
-              <section className="overflow-hidden rounded-2xl bg-slate-900 text-white shadow-sm">
-                <div className="px-6 py-6">
-                  <p className="text-xs tracking-wide text-slate-400 uppercase">{today}</p>
-                  <h1 className="mt-2 text-2xl font-semibold">{user.name}</h1>
-                  <p className="mt-1 text-sm text-slate-300">Sales for the shop and day you choose.</p>
-                </div>
-                <div className="grid grid-cols-2 border-t border-slate-700">
-                  <button type="button" className="px-6 py-4 text-left hover:bg-slate-800" onClick={() => setSection('shops')}>
-                    <p className="text-xs text-slate-400">Shops</p>
-                    <p className="mt-1 text-2xl font-semibold">{shops.length}</p>
+      <div className="flex h-screen overflow-hidden bg-[#090d16] text-slate-100">
+        {searchOpen && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/80 px-4 pt-24 backdrop-blur-md">
+            <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-800 bg-[#111726] shadow-2xl">
+              <div className="flex items-center gap-3 border-b border-slate-800 p-4">
+                <Icon name="search" className="h-5 w-5 text-slate-400" />
+                <input
+                  className="w-full border-none bg-transparent text-base text-slate-100 outline-none placeholder:text-slate-500"
+                  placeholder="Search pages, shops, products, or customers"
+                  value={searchQuery}
+                  autoFocus
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+                <button type="button" className="rounded border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-400" onClick={() => setSearchOpen(false)}>ESC</button>
+              </div>
+              <div className="px-2 py-3">
+                {searchResults.map((result) => (
+                  <button
+                    key={`${result.kind}-${result.label}`}
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-slate-300 hover:bg-slate-800/60 hover:text-white"
+                    onClick={() => { setSection(result.id); setSearchOpen(false); setSearchQuery(''); }}
+                  >
+                    <span>{result.label}</span>
+                    <span className="text-xs text-slate-500">{result.kind}</span>
                   </button>
-                  <div className="border-l border-slate-700 px-6 py-4">
-                    <p className="text-xs text-slate-400">Sales</p>
-                    <p className="mt-1 text-2xl font-semibold">{money(sales.cents)}</p>
-                    <p className="text-xs text-slate-400">{sales.units} sold</p>
+                ))}
+                {searchResults.length === 0 && <p className="px-3 py-2 text-sm text-slate-500">Nothing matches that search.</p>}
+              </div>
+            </div>
+          </div>
+        )}
+        <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-slate-800/80 bg-[#0c111d]">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="border-b border-slate-800/80 p-4">
+              <div className="flex items-center gap-3 rounded-xl border border-slate-800/80 bg-slate-900/90 p-2.5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-tr from-indigo-600 to-emerald-400 p-0.5">
+                  <div className="flex h-full w-full items-center justify-center rounded-[7px] bg-[#0c111d]">
+                    <Icon name="shops" className="h-5 w-5 text-indigo-400" />
                   </div>
                 </div>
-              </section>
-
-              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-wrap items-end justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Sales</h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {salesWhen === 'today' ? 'Today' : customDate} · {salesShop === 'all' ? 'All shops' : salesShop}
-                    </p>
-                  </div>
-                  <button type="button" className="rounded border border-slate-300 px-3 py-2 text-sm" onClick={() => setFiltersOpen((open) => !open)}>
-                    {filtersOpen ? 'Hide filters' : 'Filter'}
-                  </button>
+                <div className="min-w-0 text-left">
+                  <p className="truncate text-sm font-bold tracking-tight text-slate-100">{companyName}</p>
+                  <p className="text-xs text-slate-400">Inventory</p>
                 </div>
-                {filtersOpen && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <select className="rounded border border-slate-300 px-3 py-2 text-sm" value={salesShop} onChange={(event) => setSalesShop(event.target.value)}>
-                      <option value="all">All shops</option>
-                      {shops.map((shop) => (
-                        <option key={shop.name} value={shop.name}>{shop.name}</option>
-                      ))}
-                    </select>
-                    <button type="button" className={`rounded px-3 py-2 text-sm ${salesWhen === 'today' ? 'bg-slate-900 text-white' : 'border border-slate-300'}`} onClick={() => setSalesWhen('today')}>Today</button>
-                    <button type="button" className={`rounded px-3 py-2 text-sm ${salesWhen === 'custom' ? 'bg-slate-900 text-white' : 'border border-slate-300'}`} onClick={() => setSalesWhen('custom')}>Custom date</button>
-                    {salesWhen === 'custom' && (
-                      <input type="date" className="rounded border border-slate-300 px-3 py-2 text-sm" value={customDate} onChange={(event) => setCustomDate(event.target.value)} />
+              </div>
+            </div>
+            <nav className="space-y-1 p-3">
+              <p className="px-3 py-2 text-[11px] font-semibold tracking-wider text-slate-400 uppercase">Core menu</p>
+              {nav.map((item) => {
+                const active = section === item.id;
+                const count = counts[item.id];
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`relative flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium ${active ? 'border border-indigo-500/30 bg-gradient-to-r from-indigo-600/20 to-indigo-600/5 font-semibold text-indigo-300' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'}`}
+                    onClick={() => setSection(item.id)}
+                  >
+                    {active && <span className="absolute top-2 bottom-2 left-0 w-1 rounded-r-full bg-indigo-500" />}
+                    <span className="flex items-center gap-3">
+                      <Icon name={item.icon} className={`h-4 w-4 ${active ? 'text-indigo-400' : 'text-slate-400'}`} />
+                      <span>{item.label}</span>
+                    </span>
+                    {count != null && (
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${active ? 'bg-indigo-500/30 text-indigo-200' : 'bg-slate-800 text-slate-400'}`}>{count}</span>
                     )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+          <div className="border-t border-slate-800/80 p-3">
+            <div className="flex items-center justify-between rounded-xl border border-slate-800/50 bg-slate-900/40 p-2.5">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-800 text-xs font-bold text-indigo-400">{initials}</div>
+                  <span className="absolute right-0 bottom-0 h-2.5 w-2.5 rounded-full border-2 border-[#0c111d] bg-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-200">{user.name}</p>
+                  <p className="text-[11px] text-slate-400">{roleName[user.role] || 'Staff'}</p>
+                </div>
+              </div>
+              <button type="button" title="Log out" className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-500/10 hover:text-rose-400" onClick={onLogout}>
+                <Icon name="logout" />
+              </button>
+            </div>
+          </div>
+        </aside>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 bg-[#090d16]/80 px-6 py-3.5 backdrop-blur-xl">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-slate-400">Workspace</span>
+              <span className="text-slate-600">/</span>
+              <span className="font-semibold text-white">{currentNav.label}</span>
+            </div>
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+              <div className="relative">
+                <button type="button" className="relative rounded-xl border border-slate-800 bg-slate-900/90 p-2 text-slate-400 hover:border-slate-700 hover:text-slate-200" aria-label="Notifications" onClick={() => setNotesOpen((open) => !open)}>
+                  <Icon name="bell" className="h-4 w-4" />
+                  {unreadNotes > 0 && <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-[#090d16]" />}
+                </button>
+                {notesOpen && (
+                  <div className="absolute right-0 z-50 mt-2 w-80 rounded-2xl border border-slate-800 bg-[#111726] py-3 shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-800 px-4 pb-2">
+                      <span className="text-xs font-bold tracking-wider text-slate-300 uppercase">Notifications</span>
+                      <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-300">{unreadNotes} new</span>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {notifications.map((note) => (
+                        <button key={note.id} type="button" className="block w-full px-4 py-3 text-left hover:bg-slate-800/40" onClick={() => openNotification(note)}>
+                          <p className={`text-xs ${note.readAt ? 'text-slate-400' : 'font-medium text-slate-200'}`}>{note.body}</p>
+                          <span className="mt-1 block text-[10px] text-slate-500">{new Date(note.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                        </button>
+                      ))}
+                      {notifications.length === 0 && <p className="px-4 py-3 text-xs text-slate-500">No notifications.</p>}
+                    </div>
                   </div>
                 )}
-                {salesNote && <p className="mt-4 text-sm text-red-700">{salesNote}</p>}
-                <ul className="mt-6 space-y-4">
-                  {sales.bars.map((bar) => (
-                    <li key={bar.label}>
-                      <div className="flex items-baseline justify-between gap-4 text-sm">
-                        <p className="font-medium text-slate-900">{bar.label}</p>
-                        <p className="text-slate-600">{money(bar.cents)} · {bar.units} sold</p>
-                      </div>
-                      <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-teal-700 to-slate-900"
-                          style={{ width: `${tallest ? Math.max(8, (Number(bar.cents) / tallest) * 100) : 0}%` }}
-                        />
-                      </div>
-                    </li>
-                  ))}
-                  {!salesNote && sales.bars.length === 0 && <li className="text-sm text-slate-500">No sales on this day.</li>}
-                </ul>
+              </div>
+              <button type="button" className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-400 hover:border-slate-700 hover:text-slate-200" onClick={() => setSearchOpen(true)}>
+                <span className="flex items-center gap-2"><Icon name="search" className="h-3.5 w-3.5" /> Search</span>
+                <kbd className="rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 font-mono text-[10px]">Ctrl K</kbd>
+              </button>
+              <div className="flex items-center rounded-xl border border-slate-800 bg-slate-900/90 p-1 text-xs">
+                {[['today', 'Today'], ['week', '7 days'], ['month', '30 days']].map(([id, label]) => (
+                  <button key={id} type="button" className={`rounded-lg px-3 py-1 font-medium ${salesWhen === id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`} onClick={() => setSalesWhen(id)}>{label}</button>
+                ))}
+              </div>
+              <button type="button" className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2 text-xs font-semibold text-slate-950 shadow-md shadow-emerald-500/10" onClick={() => { setSection('sales'); setSaleView('record'); }}>
+                <Icon name="plus" className="h-4 w-4" />
+                Record sale
+              </button>
+            </div>
+          </header>
+          <main className="workspace min-w-0 flex-1 overflow-y-auto px-6 py-8 md:px-8">
+          {error && <p className="mb-4 text-sm text-red-700">{error}</p>}
+          {section === 'reports' && <ReportScreen shops={shops} />}
+          {section === 'dashboard' && (
+            <div className="mx-auto w-full max-w-7xl space-y-8">
+              <section className="relative overflow-hidden rounded-3xl border border-slate-800/80 bg-gradient-to-br from-[#121b2d] via-[#101726] to-[#0d121f] p-6 shadow-xl md:p-8">
+                <div className="pointer-events-none absolute top-0 right-0 h-96 w-96 rounded-full bg-indigo-500/10 blur-3xl" />
+                <div className="relative z-10 flex flex-col justify-between gap-6 md:flex-row md:items-center">
+                  <div>
+                    <p className="mb-2 text-xs font-semibold tracking-wider text-indigo-400 uppercase">{today}</p>
+                    <h1 className="text-2xl font-extrabold tracking-tight text-white md:text-3xl">{companyName}</h1>
+                    <p className="mt-1.5 max-w-xl text-sm text-slate-400">Sales, stock, and shops for {periodLabel.toLowerCase()}{salesShop === 'all' ? ', across every shop' : ` at ${salesShop}`}.</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
+                    <p className="text-xs font-medium text-slate-400">Revenue · {periodLabel}</p>
+                    <p className="text-lg font-bold text-white">{money(sales.cents)}</p>
+                    <p className="text-xs text-slate-400">{sales.invoices} {sales.invoices === 1 ? 'sale' : 'sales'} · {sales.units} units</p>
+                  </div>
+                </div>
               </section>
 
-              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <h2 className="text-lg font-semibold text-slate-900">Where you sell</h2>
-                <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {shops.map((shop) => (
-                    <li key={shop.name} className="rounded-xl bg-slate-50 px-4 py-3">
-                      <p className="font-medium text-slate-900">{shop.name}</p>
-                      <p className="mt-1 text-sm text-slate-500">{shop.location}</p>
-                    </li>
-                  ))}
-                  {shops.length === 0 && <li className="text-sm text-slate-500">No shops yet.</li>}
-                </ul>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 md:gap-6">
+                {[
+                  ['Revenue', money(sales.cents), periodLabel],
+                  ['Units sold', String(sales.units), periodLabel],
+                  ['Shops', String(shops.length), 'Open'],
+                  ['Average sale', money(averageCents), sales.invoices ? `${sales.invoices} sales` : periodLabel],
+                ].map(([title, value, caption]) => (
+                  <article key={title} className="rounded-2xl border border-slate-800/90 bg-[#0f1523] p-5 shadow-md">
+                    <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">{title}</p>
+                    <p className="mt-2 text-2xl font-extrabold tracking-tight text-white">{value}</p>
+                    <p className="mt-3 border-t border-slate-800/60 pt-3 text-[11px] text-slate-500">{caption}</p>
+                  </article>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <section className="rounded-2xl border border-slate-800/90 bg-[#0f1523] p-6 shadow-md lg:col-span-2">
+                  <div className="flex flex-col justify-between gap-4 border-b border-slate-800/80 pb-5 sm:flex-row sm:items-center">
+                    <div>
+                      <h2 className="text-base font-bold text-white">Sales breakdown <span className="text-xs font-normal text-slate-400">{periodLabel} · {salesShop === 'all' ? 'All shops' : salesShop}</span></h2>
+                      <p className="mt-0.5 text-xs text-slate-400">What sold in this period, by product.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select className="rounded-xl border border-slate-800 bg-[#111726] px-3 py-1.5 text-xs text-slate-200" value={salesShop} onChange={(event) => setSalesShop(event.target.value)}>
+                        <option value="all">All shops</option>
+                        {shops.map((shop) => (
+                          <option key={shop.name} value={shop.name}>{shop.name}</option>
+                        ))}
+                      </select>
+                      <input type="date" className="rounded-xl border border-slate-800 bg-[#111726] px-3 py-1.5 text-xs text-slate-200" value={salesWhen === 'custom' ? customDate : ''} onChange={(event) => { setCustomDate(event.target.value); setSalesWhen(event.target.value ? 'custom' : 'today'); }} />
+                    </div>
+                  </div>
+                  {salesNote && <p className="mt-4 text-sm text-red-400">{salesNote}</p>}
+                  <ul className="mt-6 space-y-5">
+                    {sales.bars.map((bar, index) => {
+                      const share = sales.cents ? Math.round((Number(bar.cents) / Number(sales.cents)) * 1000) / 10 : 0;
+                      return (
+                        <li key={bar.label} className="space-y-2">
+                          <div className="flex items-center justify-between gap-4 text-sm">
+                            <span className="flex items-center gap-3">
+                              <span className={`h-3 w-3 rounded-full ${barColors[index % barColors.length]}`} />
+                              <span className="font-semibold text-slate-200">{bar.label}</span>
+                            </span>
+                            <span className="text-right">
+                              <span className="font-bold text-white">{money(bar.cents)}</span>
+                              <span className="ml-2 text-xs text-slate-400">({bar.units} sold)</span>
+                            </span>
+                          </div>
+                          <div className="h-2.5 overflow-hidden rounded-full border border-slate-800 bg-slate-900 p-0.5">
+                            <div className={`h-full rounded-full ${barColors[index % barColors.length]}`} style={{ width: `${share}%` }} />
+                          </div>
+                        </li>
+                      );
+                    })}
+                    {!salesNote && sales.bars.length === 0 && <li className="text-sm text-slate-500">No sales in this period.</li>}
+                  </ul>
+                  <div className="mt-8 flex items-center justify-between border-t border-slate-800/80 pt-4 text-xs text-slate-400">
+                    <span>{products.length} products on file</span>
+                    <button type="button" className="font-medium text-indigo-400 hover:text-indigo-300" onClick={() => setSection('inventory')}>View inventory</button>
+                  </div>
+                </section>
+
+                <section className="flex flex-col justify-between rounded-2xl border border-slate-800/90 bg-[#0f1523] p-6 shadow-md">
+                  <div>
+                    <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+                      <div>
+                        <h2 className="text-base font-bold text-white">Where you sell</h2>
+                        <p className="mt-0.5 text-xs text-slate-400">Shops and what they sold in this period</p>
+                      </div>
+                      <span className="rounded-lg border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-xs font-semibold text-indigo-400">{shops.length} active</span>
+                    </div>
+                    <ul className="mt-5 space-y-3.5">
+                      {shops.map((shop) => {
+                        const totals = shopTotals.get(shop.name);
+                        return (
+                          <li key={shop.name} className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-100">{shop.name}</p>
+                                <p className="mt-0.5 text-xs text-slate-400">{shop.location}</p>
+                              </div>
+                              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${totals ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400' : 'border-slate-700 bg-slate-800 text-slate-400'}`}>
+                                {totals ? 'Sold' : 'Quiet'}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between border-t border-slate-800/60 pt-3 text-xs">
+                              <span className="text-slate-400">Revenue</span>
+                              <span className="font-bold text-white">{money(totals?.cents || 0)} <span className="font-normal text-slate-400">({totals?.invoices || 0} sales)</span></span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                      {shops.length === 0 && <li className="text-sm text-slate-500">No shops yet.</li>}
+                    </ul>
+                  </div>
+                  <button type="button" className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-800 bg-slate-900/40 py-2.5 text-xs font-semibold text-slate-300 hover:border-slate-700 hover:text-white" onClick={() => setSection('shops')}>
+                    <Icon name="plus" className="h-3.5 w-3.5" />
+                    Register a shop
+                  </button>
+                </section>
+              </div>
+
+              <section className="overflow-hidden rounded-2xl border border-slate-800/90 bg-[#0f1523] shadow-md">
+                <div className="border-b border-slate-800/80 p-6">
+                  <h2 className="text-base font-bold text-white">Recent sales</h2>
+                  <p className="mt-0.5 text-xs text-slate-400">Recorded sales for {periodLabel.toLowerCase()}.</p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="border-b border-slate-800 bg-[#0c111d] text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                      <tr>
+                        <th className="px-6 py-3.5">Invoice</th>
+                        <th className="px-6 py-3.5">Customer</th>
+                        <th className="px-6 py-3.5">Items</th>
+                        <th className="px-6 py-3.5">Shop</th>
+                        <th className="px-6 py-3.5">Recorded by</th>
+                        <th className="px-6 py-3.5">Payment</th>
+                        <th className="px-6 py-3.5 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {visibleRecent.map((sale) => {
+                        const payment = sale.payment === 'transfer' ? `Transfer · ${sale.bankName}` : sale.payment === 'credit' ? (sale.balanceCents > 0 ? 'Credit open' : 'Credit paid') : 'Cash';
+                        const open = sale.balanceCents > 0;
+                        return (
+                          <tr key={sale.id} className="hover:bg-slate-900/50">
+                            <td className="px-6 py-4 font-mono font-semibold text-indigo-400">{sale.invoiceNumber}</td>
+                            <td className="px-6 py-4 text-slate-200">{sale.customer}</td>
+                            <td className="px-6 py-4">{sale.quantity} {sale.unit} {sale.product}</td>
+                            <td className="px-6 py-4 text-slate-400">{sale.shop}</td>
+                            <td className="px-6 py-4 text-slate-300">{sale.createdBy || 'Not recorded'}</td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${open ? 'border-amber-500/20 bg-amber-500/10 text-amber-400' : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'}`}>
+                                <span className={`h-1.5 w-1.5 rounded-full ${open ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                                {payment}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right font-bold text-white">{money(sale.totalCents)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-800/80 bg-[#0c111d] p-4 text-xs text-slate-400">
+                  <span>{visibleRecent.length === 0 ? 'No sales in this period' : `${visibleRecent.length} ${visibleRecent.length === 1 ? 'sale' : 'sales'}`}</span>
+                  <button type="button" className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-slate-300 hover:text-white" onClick={() => { setSection('sales'); setSaleView('list'); }}>Open sales list</button>
+                </div>
               </section>
             </div>
           )}
@@ -779,8 +1195,13 @@ export default function HomePage() {
                   </select>
                 </label>
                 <label className="block text-sm text-slate-600">
-                  Price <span className="text-slate-400">optional</span>
+                  Price {company.priceMode === 'dynamic' && <span className="text-slate-400">optional</span>}
                   <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} placeholder="45.34" />
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {company.priceMode === 'fixed'
+                      ? 'Prices are set. This price is used on every sale and purchase.'
+                      : 'Leave this empty when the price is typed at the sale or purchase.'}
+                  </span>
                 </label>
                 <button className="rounded bg-slate-900 px-4 py-2 text-sm text-white" type="submit">Add product</button>
               </form>
@@ -820,10 +1241,11 @@ export default function HomePage() {
           {section === 'sales' && (
             <>
               <h1 className="text-2xl font-semibold text-slate-900">Sales</h1>
-              <p className="mt-1 text-sm text-slate-500">Sell from one shop, or take a payment on a credit invoice.</p>
+              <p className="mt-1 text-sm text-slate-500">Sell from one shop, look up a completed sale, or take a payment on a credit invoice.</p>
               {saleNotice && <p className="mt-4 text-sm text-teal-800">{saleNotice}</p>}
               <div className="mt-6 flex flex-wrap gap-2">
                 <button type="button" className={`rounded px-3 py-2 text-sm ${saleView === 'record' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setSaleView('record')}>Record sale</button>
+                <button type="button" className={`rounded px-3 py-2 text-sm ${saleView === 'list' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setSaleView('list')}>Completed sales</button>
                 <button type="button" className={`rounded px-3 py-2 text-sm ${saleView === 'credit' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setSaleView('credit')}>Sales by credit</button>
               </div>
               {saleView === 'record' && (
@@ -848,13 +1270,7 @@ export default function HomePage() {
                     <button type="button" role="tab" aria-selected={salePayment === 'credit'} className={`rounded-t px-4 py-2 text-sm ${salePayment === 'credit' ? '-mb-px border border-b-white border-slate-300 bg-white font-medium' : 'text-slate-600'}`} onClick={() => setSalePayment('credit')}>Credit</button>
                   </div>
                   {salePayment === 'transfer' && (
-                    <div id="sale-bank-panel" role="tabpanel" aria-label="Bank" className="rounded-b border border-t-0 border-slate-300 p-4">
-                      <p className="text-sm font-medium text-slate-900">Bank</p>
-                      <label className="mt-3 block text-sm text-slate-600">
-                        Bank name
-                        <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={saleBank} onChange={(event) => setSaleBank(event.target.value)} placeholder="Type the bank name" />
-                      </label>
-                    </div>
+                    <BankField id="sale-bank-panel" banks={company.banks} value={saleBank} onChange={setSaleBank} />
                   )}
                   {salePayment === 'credit' && (
                     <div role="tabpanel" aria-label="Credit" className="rounded-b border border-t-0 border-slate-300 p-4 text-sm text-slate-600">
@@ -979,13 +1395,15 @@ export default function HomePage() {
                   Unit price
                   <input
                     className="mt-1 w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50"
-                    value={saleProduct ? salePrice : ''}
+                    value={saleProduct ? priceSource : ''}
                     onChange={(event) => setSalePrice(event.target.value)}
-                    disabled={!saleProduct}
+                    disabled={!saleProduct || company.priceMode === 'fixed'}
                     placeholder="45.34"
                   />
-                  {saleProduct && saleProduct.unit_price == null && <span className="mt-1 block text-xs text-slate-500">This product has no price. Type the price for this sale.</span>}
-                  {saleProduct && saleProduct.unit_price != null && <span className="mt-1 block text-xs text-slate-500">Filled from the product. Change it for this sale if you need a different price.</span>}
+                  {saleProduct && company.priceMode === 'fixed' && saleProduct.unit_price == null && <span className="mt-1 block text-xs text-slate-500">Set a price on this product before you sell it.</span>}
+                  {saleProduct && company.priceMode === 'fixed' && saleProduct.unit_price != null && <span className="mt-1 block text-xs text-slate-500">This price is set on the product.</span>}
+                  {saleProduct && company.priceMode === 'dynamic' && saleProduct.unit_price == null && <span className="mt-1 block text-xs text-slate-500">This product has no price. Type the price for this sale.</span>}
+                  {saleProduct && company.priceMode === 'dynamic' && saleProduct.unit_price != null && <span className="mt-1 block text-xs text-slate-500">Filled from the product. Change it for this sale if you need a different price.</span>}
                 </label>
                 <label className="block text-sm text-slate-600">
                   Quantity
@@ -1036,6 +1454,7 @@ export default function HomePage() {
                         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invoice number</p>
                         <p className="text-3xl font-semibold text-slate-900">{sale.invoiceNumber}</p>
                         <p className="text-sm text-slate-500">{sale.shop} · {sale.customer}</p>
+                        <p className="text-sm text-slate-500">{sale.createdBy ? `Recorded by ${sale.createdBy}` : 'Person was not saved'}</p>
                         <p className="text-sm text-slate-500">{sale.quantity} {sale.unit} of {sale.product}</p>
                         <p className="text-sm text-slate-700">Total {money(sale.totalCents)} · Paid {money(sale.paidCents)} · Left {money(sale.balanceCents)}</p>
                         {sale.payments?.length > 0 && (
@@ -1061,13 +1480,7 @@ export default function HomePage() {
                               <button type="button" role="tab" aria-selected={creditPayMethod === 'transfer'} className={`rounded-t px-4 py-2 text-sm ${creditPayMethod === 'transfer' ? '-mb-px border border-b-white border-slate-300 bg-white font-medium' : 'text-slate-600'}`} onClick={() => setCreditPayMethod('transfer')}>Transfer</button>
                             </div>
                             {creditPayMethod === 'transfer' && (
-                              <div role="tabpanel" aria-label="Bank" className="rounded-b border border-t-0 border-slate-300 p-4">
-                                <p className="text-sm font-medium text-slate-900">Bank</p>
-                                <label className="mt-3 block text-sm text-slate-600">
-                                  Bank name
-                                  <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={creditPayBank} onChange={(event) => setCreditPayBank(event.target.value)} placeholder="Type the bank name" />
-                                </label>
-                              </div>
+                              <BankField banks={company.banks} value={creditPayBank} onChange={setCreditPayBank} />
                             )}
                             <button className="rounded bg-slate-900 px-4 py-2 text-sm text-white" type="submit">Record payment</button>
                           </form>
@@ -1075,6 +1488,55 @@ export default function HomePage() {
                       </li>
                     ))}
                     {creditSales.length === 0 && !creditNote && <li className="px-4 py-3 text-sm text-slate-500">No credit invoice for this shop.</li>}
+                  </ul>
+                </div>
+              )}
+              {saleView === 'list' && (
+                <div className="mt-4 max-w-3xl space-y-3">
+                  <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <label className="text-sm text-slate-600">
+                      Invoice number
+                      <input className="mt-1 block w-36 rounded border border-slate-300 px-3 py-2" value={listInvoice} onChange={(event) => setListInvoice(event.target.value)} placeholder="2" inputMode="numeric" />
+                    </label>
+                    <label className="text-sm text-slate-600">
+                      Shop
+                      <select className="mt-1 block rounded border border-slate-300 px-3 py-2" value={listShop} onChange={(event) => setListShop(event.target.value)}>
+                        <option value="all">All shops</option>
+                        {shops.map((shop) => (
+                          <option key={shop.name} value={shop.name}>{shop.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-sm text-slate-600">
+                      Date
+                      <input type="date" className="mt-1 block rounded border border-slate-300 px-3 py-2" value={listDate} onChange={(event) => setListDate(event.target.value)} />
+                    </label>
+                    {listDate && (
+                      <button type="button" className="mt-6 h-fit rounded border border-slate-300 px-3 py-2 text-sm" onClick={() => setListDate('')}>Any date</button>
+                    )}
+                  </div>
+                  {listNote && <p className="text-sm text-red-700">{listNote}</p>}
+                  <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+                    {completedSales.map((sale) => {
+                      const when = new Date(sale.soldAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+                      const paymentLabel = sale.payment === 'transfer'
+                        ? `Transfer to ${sale.bankName}`
+                        : sale.payment === 'credit'
+                          ? 'Credit'
+                          : 'Cash';
+                      return (
+                        <li key={sale.id} className="px-4 py-3">
+                          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invoice number</p>
+                          <p className="text-3xl font-semibold text-slate-900">{sale.invoiceNumber}</p>
+                          <p className="text-sm text-slate-500">{when} · {sale.shop}</p>
+                          <p className="text-sm text-slate-700">{sale.customer}</p>
+                          <p className="text-sm text-slate-500">{sale.createdBy ? `Recorded by ${sale.createdBy}` : 'Person was not saved'}</p>
+                          <p className="text-sm text-slate-500">{sale.quantity} {sale.unit} of {sale.product}</p>
+                          <p className="text-sm text-slate-700">{paymentLabel} · Total {money(sale.totalCents)} · Paid {money(sale.paidCents)}{sale.balanceCents > 0 ? ` · Left ${money(sale.balanceCents)}` : ''}</p>
+                        </li>
+                      );
+                    })}
+                    {!listNote && completedSales.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No completed sales match these filters.</li>}
                   </ul>
                 </div>
               )}
@@ -1086,6 +1548,8 @@ export default function HomePage() {
               products={products}
               suppliers={suppliers}
               units={unitChoices}
+              banks={company.banks}
+              priceMode={company.priceMode}
               onChanged={() => setSalesRevision((version) => version + 1)}
             />
           )}
@@ -1094,6 +1558,7 @@ export default function HomePage() {
               shops={shops}
               products={products}
               units={unitChoices}
+              openConfirm={transferOpen}
               onChanged={() => setSalesRevision((version) => version + 1)}
             />
           )}
@@ -1154,57 +1619,59 @@ export default function HomePage() {
             </>
           )}
           {section === 'users' && <StaffScreen />}
+          {section === 'settings' && <SettingsScreen onChanged={loadSettings} />}
         </main>
+      </div>
       </div>
     );
   }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-lg flex-col justify-center px-6 py-16">
-      <p className="text-sm font-medium tracking-wide text-slate-500 uppercase">Inventory</p>
-      <h1 className="mt-2 text-3xl font-semibold text-slate-900">{mode === 'login' ? 'Log in' : 'Create a company'}</h1>
+      <p className="text-sm font-medium tracking-wide text-slate-400 uppercase">Inventory</p>
+      <h1 className="mt-2 text-3xl font-semibold text-white">{mode === 'login' ? 'Log in' : 'Create a company'}</h1>
 
-      {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
+      {error && <p className="mt-4 text-sm text-rose-300">{error}</p>}
 
       {!user && mode === 'login' && (
-        <form onSubmit={onLogin} className="mt-8 space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <label className="block text-sm text-slate-600">
+        <form onSubmit={onLogin} className="mt-8 space-y-3 rounded-2xl border border-slate-800 bg-[#111726] p-5 shadow-sm">
+          <label className="block text-sm text-slate-400">
             Email or phone
-            <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={loginId} onChange={(event) => setLoginId(event.target.value)} />
+            <input className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={loginId} onChange={(event) => setLoginId(event.target.value)} />
           </label>
-          <label className="block text-sm text-slate-600">
+          <label className="block text-sm text-slate-400">
             Password
-            <input type="password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={password} onChange={(event) => setPassword(event.target.value)} required />
+            <input type="password" className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={password} onChange={(event) => setPassword(event.target.value)} required />
           </label>
-          <button className="rounded bg-slate-900 px-4 py-2 text-sm text-white" type="submit">Log in</button>
-          <button className="block text-sm text-slate-600 underline" type="button" onClick={() => { setMode('signup'); setError(null); }}>Create a company</button>
+          <button className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Log in</button>
+          <button className="block text-sm text-slate-400 underline" type="button" onClick={() => { setMode('signup'); setError(null); }}>Create a company</button>
         </form>
       )}
 
       {!user && mode === 'signup' && (
-        <form onSubmit={onSignup} className="mt-8 space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <label className="block text-sm text-slate-600">
+        <form onSubmit={onSignup} className="mt-8 space-y-3 rounded-2xl border border-slate-800 bg-[#111726] p-5 shadow-sm">
+          <label className="block text-sm text-slate-400">
             Your name
-            <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} />
+            <input className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} />
           </label>
-          <label className="block text-sm text-slate-600">
+          <label className="block text-sm text-slate-400">
             Company name
-            <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
+            <input className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} />
           </label>
-          <label className="block text-sm text-slate-600">
+          <label className="block text-sm text-slate-400">
             Email
-            <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={signupEmail} onChange={(event) => setSignupEmail(event.target.value)} />
+            <input className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={signupEmail} onChange={(event) => setSignupEmail(event.target.value)} />
           </label>
-          <label className="block text-sm text-slate-600">
+          <label className="block text-sm text-slate-400">
             Phone, optional
-            <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={phone} onChange={(event) => setPhone(event.target.value)} />
+            <input className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={phone} onChange={(event) => setPhone(event.target.value)} />
           </label>
-          <label className="block text-sm text-slate-600">
+          <label className="block text-sm text-slate-400">
             Password
-            <input type="password" className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={signupPassword} onChange={(event) => setSignupPassword(event.target.value)} />
+            <input type="password" className="mt-1 w-full rounded-xl border border-slate-700 bg-[#172033] px-3 py-2 text-white" value={signupPassword} onChange={(event) => setSignupPassword(event.target.value)} />
           </label>
-          <button className="rounded bg-slate-900 px-4 py-2 text-sm text-white" type="submit">Create company</button>
-          <button className="block text-sm text-slate-600 underline" type="button" onClick={() => { setMode('login'); setError(null); }}>I already have an account</button>
+          <button className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Create company</button>
+          <button className="block text-sm text-slate-400 underline" type="button" onClick={() => { setMode('login'); setError(null); }}>I already have an account</button>
         </form>
       )}
     </main>

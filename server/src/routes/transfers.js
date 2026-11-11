@@ -13,12 +13,14 @@ function orderSelect() {
             units.code AS unit,
             transfer_orders.quantity,
             transfer_orders.status,
-            transfer_orders.ordered_at
+            transfer_orders.ordered_at,
+            orderer.name AS ordered_by
      FROM transfer_orders
      JOIN branches source ON source.id = transfer_orders.source_branch_id
      JOIN branches destination ON destination.id = transfer_orders.destination_branch_id
      JOIN products ON products.id = transfer_orders.product_id
-     JOIN units ON units.id = transfer_orders.unit_id`;
+     JOIN units ON units.id = transfer_orders.unit_id
+     JOIN users orderer ON orderer.id = transfer_orders.ordered_by`;
 }
 
 router.get('/', async (req, res) => {
@@ -150,6 +152,39 @@ router.post('/', async (req, res) => {
        RETURNING id`,
       [membership.organization_id, source.rows[0].id, destination.rows[0].id, productId, product.rows[0].unit_id, quantity, userId]
     );
+    const actor = await client.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+    const recipients = await client.query(
+      `SELECT memberships.user_id
+       FROM memberships
+       WHERE memberships.organization_id = $1
+         AND (
+           memberships.role = 'owner'
+           OR (
+             (
+               memberships.manages_all
+               OR EXISTS (
+                 SELECT 1 FROM membership_branches
+                 WHERE membership_branches.membership_id = memberships.id
+                   AND membership_branches.branch_id = $2
+               )
+             )
+             AND EXISTS (
+               SELECT 1 FROM membership_permissions
+               WHERE membership_permissions.membership_id = memberships.id
+                 AND membership_permissions.permission_code = 'transfer.confirm'
+             )
+           )
+         )`,
+      [membership.organization_id, destination.rows[0].id]
+    );
+    const note = `${actor.rows[0].name} ordered ${quantity} ${unit} of ${product.rows[0].name} from ${fromShop} to ${toShop}.`;
+    for (const recipient of recipients.rows) {
+      await client.query(
+        `INSERT INTO notifications (user_id, organization_id, kind, transfer_order_id, body)
+         VALUES ($1, $2, 'transfer.accept', $3, $4)`,
+        [recipient.user_id, membership.organization_id, order.rows[0].id, note]
+      );
+    }
     await client.query('COMMIT');
     return res.status(201).json({
       id: order.rows[0].id,
@@ -187,7 +222,7 @@ router.post('/:id/accept', async (req, res) => {
     }
     if (!await hasPermission(client, membership, 'transfer.confirm')) {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'You cannot confirm a transfer' });
+      return res.status(403).json({ error: 'You do not have permission to accept a transfer order' });
     }
     const order = await client.query(
       `SELECT transfer_orders.id,
@@ -249,10 +284,10 @@ router.post('/:id/accept', async (req, res) => {
     );
     const movement = await client.query(
       `INSERT INTO stock_transactions
-         (source_branch_id, destination_branch_id, product_id, quantity, type, unit_id)
-       VALUES ($1, $2, $3, $4, 'TRANSFER', $5)
+         (source_branch_id, destination_branch_id, product_id, quantity, type, unit_id, created_by)
+       VALUES ($1, $2, $3, $4, 'TRANSFER', $5, $6)
        RETURNING id`,
-      [row.source_branch_id, row.destination_branch_id, row.product_id, row.quantity, row.unit_id]
+      [row.source_branch_id, row.destination_branch_id, row.product_id, row.quantity, row.unit_id, userId]
     );
     await client.query(
       `UPDATE transfer_orders
@@ -281,6 +316,76 @@ router.post('/:id/accept', async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+  }
+});
+
+router.get('/completed', async (req, res) => {
+  const userId = req.cookies.userId;
+  if (!userId) return res.status(401).json({ error: 'Login required' });
+  const shopRaw = String(req.query.shop || '').trim();
+  const shop = !shopRaw || shopRaw === 'all' ? null : shopRaw;
+  const dateRaw = String(req.query.date || '').trim();
+  if (dateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+    return res.status(400).json({ error: 'Choose a date' });
+  }
+  const timeZone = String(req.query.timeZone || 'UTC').trim();
+  if (!/^[A-Za-z0-9_+/-]{1,64}$/.test(timeZone)) {
+    return res.status(400).json({ error: 'Choose a time zone' });
+  }
+  try {
+    const db = await getDb();
+    try {
+      await db.query(`SELECT now() AT TIME ZONE $1`, [timeZone]);
+    } catch (error) {
+      if (error.code === '22023') return res.status(400).json({ error: 'Choose a time zone' });
+      throw error;
+    }
+    const result = await db.query(
+      `SELECT transfer_orders.id,
+              source.name AS from_shop,
+              destination.name AS to_shop,
+              products.name AS product,
+              units.code AS unit,
+              transfer_orders.quantity,
+              transfer_orders.ordered_at,
+              transfer_orders.accepted_at,
+              orderer.name AS ordered_by,
+              accepter.name AS accepted_by
+       FROM transfer_orders
+       JOIN branches source ON source.id = transfer_orders.source_branch_id
+       JOIN branches destination ON destination.id = transfer_orders.destination_branch_id
+       JOIN products ON products.id = transfer_orders.product_id
+       JOIN units ON units.id = transfer_orders.unit_id
+       JOIN users orderer ON orderer.id = transfer_orders.ordered_by
+       JOIN users accepter ON accepter.id = transfer_orders.accepted_by
+       JOIN memberships ON memberships.organization_id = transfer_orders.organization_id
+       WHERE memberships.user_id = $1
+         AND transfer_orders.status = 'accepted'
+         AND (${shopScope('source')} OR ${shopScope('destination')})
+         AND ($2::text IS NULL OR source.name = $2 OR destination.name = $2)
+         AND (
+           $3::date IS NULL
+           OR (transfer_orders.accepted_at AT TIME ZONE $4)::date = $3::date
+         )
+       ORDER BY transfer_orders.accepted_at DESC
+       LIMIT 200`,
+      [userId, shop, dateRaw || null, timeZone]
+    );
+    res.json(result.rows.map((row) => ({
+      id: row.id,
+      fromShop: row.from_shop,
+      toShop: row.to_shop,
+      product: row.product,
+      unit: row.unit,
+      quantity: row.quantity,
+      orderedAt: row.ordered_at,
+      acceptedAt: row.accepted_at,
+      orderedBy: row.ordered_by,
+      acceptedBy: row.accepted_by,
+    })));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
 import { shopScope } from '../shopScope.js';
+import { canonicalBank, priceModeFor, pricedCents } from '../orgSettings.js';
 
 const router = Router();
 
@@ -43,29 +44,48 @@ router.get('/', async (req, res) => {
 
   try {
     const db = await getDb();
-    const result = await db.query(
-      `SELECT products.name AS label,
-              SUM(stock_transactions.quantity)::int AS units,
-              SUM(stock_transactions.quantity * stock_transactions.unit_price)::int AS cents
-       FROM stock_transactions
-       JOIN products ON products.id = stock_transactions.product_id
-       JOIN branches ON branches.id = stock_transactions.source_branch_id
-       JOIN memberships ON memberships.organization_id = branches.organization_id
-       WHERE memberships.user_id = $1
+    const where = `memberships.user_id = $1
          AND ${shopScope()}
          AND stock_transactions.type = 'OUT'
          AND stock_transactions.created_at >= $2
          AND stock_transactions.created_at < $3
-         AND ($4::text IS NULL OR branches.name = $4)
-       GROUP BY products.name
-       ORDER BY cents DESC`,
-      [userId, from, to, shop]
-    );
+         AND ($4::text IS NULL OR branches.name = $4)`;
+    const params = [userId, from, to, shop];
+    const [productsResult, shopsResult] = await Promise.all([
+      db.query(
+        `SELECT products.name AS label,
+                COUNT(*)::int AS invoices,
+                SUM(stock_transactions.quantity)::int AS units,
+                SUM(stock_transactions.quantity * stock_transactions.unit_price)::int AS cents
+         FROM stock_transactions
+         JOIN products ON products.id = stock_transactions.product_id
+         JOIN branches ON branches.id = stock_transactions.source_branch_id
+         JOIN memberships ON memberships.organization_id = branches.organization_id
+         WHERE ${where}
+         GROUP BY products.name
+         ORDER BY cents DESC`,
+        params,
+      ),
+      db.query(
+        `SELECT branches.name AS name,
+                COUNT(*)::int AS invoices,
+                SUM(stock_transactions.quantity)::int AS units,
+                SUM(stock_transactions.quantity * stock_transactions.unit_price)::int AS cents
+         FROM stock_transactions
+         JOIN branches ON branches.id = stock_transactions.source_branch_id
+         JOIN memberships ON memberships.organization_id = branches.organization_id
+         WHERE ${where}
+         GROUP BY branches.name
+         ORDER BY cents DESC`,
+        params,
+      ),
+    ]);
 
-    const bars = result.rows;
+    const bars = productsResult.rows;
     const units = bars.reduce((sum, bar) => sum + bar.units, 0);
     const cents = bars.reduce((sum, bar) => sum + bar.cents, 0);
-    res.json({ units, cents, bars });
+    const invoices = bars.reduce((sum, bar) => sum + bar.invoices, 0);
+    res.json({ units, cents, invoices, bars, shops: shopsResult.rows });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -89,9 +109,9 @@ router.post('/', async (req, res) => {
   if (payment !== 'cash' && payment !== 'transfer' && payment !== 'credit') {
     return res.status(400).json({ error: 'Payment must be cash, transfer, or credit' });
   }
-  const bankName = payment === 'transfer' ? String(req.body?.bankName || '').trim() : null;
+  let bankName = payment === 'transfer' ? String(req.body?.bankName || '').trim() : null;
   if (payment === 'transfer' && !bankName) {
-    return res.status(400).json({ error: 'Type the bank name' });
+    return res.status(400).json({ error: 'Choose a bank' });
   }
 
   const db = await getDb();
@@ -152,18 +172,20 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: `This product is sold in ${product.rows[0].code}` });
     }
 
-    const rawPrice = String(req.body?.unitPrice ?? '').trim();
-    let cents = product.rows[0].unit_price;
-    if (rawPrice !== '') {
-      if (!/^\d+(\.\d{1,2})?$/.test(rawPrice)) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'Enter a unit price like 45.34' });
-      }
-      cents = Math.round(Number(rawPrice) * 100);
-    }
-    if (cents == null) {
+    const priceMode = await priceModeFor(client, organizationId);
+    const priced = pricedCents(priceMode, product.rows[0].unit_price, req.body?.unitPrice);
+    if (priced.error) {
       await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'Enter a unit price like 45.34' });
+      return res.status(400).json({ error: priced.error });
+    }
+    const cents = priced.cents;
+    if (payment === 'transfer') {
+      const bank = await canonicalBank(client, organizationId, bankName);
+      if (bank.error) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: bank.error });
+      }
+      bankName = bank.name;
     }
 
     const totalCents = cents * quantity;
@@ -220,10 +242,10 @@ router.post('/', async (req, res) => {
     );
     const sale = await client.query(
       `INSERT INTO stock_transactions
-         (source_branch_id, product_id, quantity, type, customer_id, payment, unit_id, unit_price, invoice_number, credit_kind, paid_cents, bank_name)
-       VALUES ($1, $2, $3, 'OUT', $4, $5, $6, $7, $8, $9, $10, $11)
+         (source_branch_id, product_id, quantity, type, customer_id, payment, unit_id, unit_price, invoice_number, credit_kind, paid_cents, bank_name, created_by)
+       VALUES ($1, $2, $3, 'OUT', $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
-      [branch.rows[0].id, productId, quantity, customerId, payment, product.rows[0].unit_id, cents, invoiceNumber, creditKind, paidCents, bankName]
+      [branch.rows[0].id, productId, quantity, customerId, payment, product.rows[0].unit_id, cents, invoiceNumber, creditKind, paidCents, bankName, userId]
     );
     await client.query('COMMIT');
     return res.status(201).json({
@@ -245,6 +267,94 @@ router.post('/', async (req, res) => {
     return res.status(500).json({ error: 'Internal server error' });
   } finally {
     client.release();
+  }
+});
+
+router.get('/completed', async (req, res) => {
+  const userId = req.cookies.userId;
+  if (!userId) return res.status(401).json({ error: 'Login required' });
+  const shopRaw = String(req.query.shop || '').trim();
+  const shop = !shopRaw || shopRaw === 'all' ? null : shopRaw;
+  const invoiceRaw = String(req.query.invoice || '').trim();
+  let invoice = null;
+  if (invoiceRaw) {
+    if (!/^\d+$/.test(invoiceRaw)) {
+      return res.status(400).json({ error: 'Invoice number must be a whole number' });
+    }
+    invoice = Number(invoiceRaw);
+  }
+  const dateRaw = String(req.query.date || '').trim();
+  if (dateRaw && !/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+    return res.status(400).json({ error: 'Choose a date' });
+  }
+  const timeZone = String(req.query.timeZone || 'UTC').trim();
+  if (!/^[A-Za-z0-9_+/-]{1,64}$/.test(timeZone)) {
+    return res.status(400).json({ error: 'Choose a time zone' });
+  }
+  try {
+    const db = await getDb();
+    try {
+      await db.query(`SELECT now() AT TIME ZONE $1`, [timeZone]);
+    } catch (error) {
+      if (error.code === '22023') return res.status(400).json({ error: 'Choose a time zone' });
+      throw error;
+    }
+    const result = await db.query(
+      `SELECT stock_transactions.id,
+              stock_transactions.invoice_number,
+              stock_transactions.created_at,
+              stock_transactions.payment,
+              stock_transactions.bank_name,
+              branches.name AS shop,
+              customers.name AS customer,
+              products.name AS product,
+              units.code AS unit,
+              stock_transactions.quantity,
+              (stock_transactions.unit_price * stock_transactions.quantity)::int AS total_cents,
+              stock_transactions.paid_cents,
+              COALESCE(SUM(credit_payments.amount_cents), 0)::int AS collected_cents,
+              actors.name AS created_by_name
+       FROM stock_transactions
+       JOIN branches ON branches.id = stock_transactions.source_branch_id
+       JOIN memberships ON memberships.organization_id = branches.organization_id
+       JOIN customers ON customers.id = stock_transactions.customer_id
+       JOIN products ON products.id = stock_transactions.product_id
+       JOIN units ON units.id = stock_transactions.unit_id
+       LEFT JOIN users actors ON actors.id = stock_transactions.created_by
+       LEFT JOIN credit_payments ON credit_payments.sale_id = stock_transactions.id
+       WHERE memberships.user_id = $1
+         AND ${shopScope()}
+         AND stock_transactions.type = 'OUT'
+         AND ($2::text IS NULL OR branches.name = $2)
+         AND ($3::int IS NULL OR stock_transactions.invoice_number = $3)
+         AND (
+           $4::date IS NULL
+           OR (stock_transactions.created_at AT TIME ZONE $5)::date = $4::date
+         )
+       GROUP BY stock_transactions.id, branches.name, customers.name, products.name, units.code, actors.name
+       ORDER BY stock_transactions.created_at DESC, stock_transactions.invoice_number DESC
+       LIMIT 200`,
+      [userId, shop, invoice, dateRaw || null, timeZone]
+    );
+    res.json(result.rows.map((row) => ({
+      id: row.id,
+      invoiceNumber: row.invoice_number,
+      soldAt: row.created_at,
+      shop: row.shop,
+      customer: row.customer,
+      product: row.product,
+      quantity: row.quantity,
+      unit: row.unit,
+      payment: row.payment,
+      bankName: row.bank_name,
+      totalCents: row.total_cents,
+      paidCents: row.paid_cents + row.collected_cents,
+      balanceCents: row.total_cents - row.paid_cents - row.collected_cents,
+      createdBy: row.created_by_name,
+    })));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -284,13 +394,15 @@ router.get('/credit', async (req, res) => {
                   ORDER BY credit_payments.id
                 ) FILTER (WHERE credit_payments.id IS NOT NULL),
                 '[]'
-              ) AS payments
+              ) AS payments,
+              actors.name AS created_by_name
        FROM stock_transactions
        JOIN branches ON branches.id = stock_transactions.source_branch_id
        JOIN memberships ON memberships.organization_id = branches.organization_id
        JOIN customers ON customers.id = stock_transactions.customer_id
        JOIN products ON products.id = stock_transactions.product_id
        JOIN units ON units.id = stock_transactions.unit_id
+       LEFT JOIN users actors ON actors.id = stock_transactions.created_by
        LEFT JOIN credit_payments ON credit_payments.sale_id = stock_transactions.id
        WHERE memberships.user_id = $1
          AND ${shopScope()}
@@ -298,7 +410,7 @@ router.get('/credit', async (req, res) => {
          AND stock_transactions.payment = 'credit'
          AND branches.name = $2
          AND ($3::int IS NULL OR stock_transactions.invoice_number = $3)
-       GROUP BY stock_transactions.id, branches.name, customers.name, products.name, units.code
+       GROUP BY stock_transactions.id, branches.name, customers.name, products.name, units.code, actors.name
        HAVING (
          $3::int IS NOT NULL
          OR stock_transactions.paid_cents + COALESCE(SUM(credit_payments.amount_cents), 0)
@@ -319,6 +431,7 @@ router.get('/credit', async (req, res) => {
       paidCents: row.paid_cents + row.collected_cents,
       balanceCents: row.total_cents - row.paid_cents - row.collected_cents,
       payments: row.payments,
+      createdBy: row.created_by_name,
     })));
   } catch (error) {
     console.error(error);
@@ -345,9 +458,9 @@ router.post('/credit', async (req, res) => {
   if (amountCents <= 0) {
     return res.status(400).json({ error: 'Enter the amount paid, like 10.00' });
   }
-  const bankName = payment === 'transfer' ? String(req.body?.bankName || '').trim() : null;
+  let bankName = payment === 'transfer' ? String(req.body?.bankName || '').trim() : null;
   if (payment === 'transfer' && !bankName) {
-    return res.status(400).json({ error: 'Type the bank name' });
+    return res.status(400).json({ error: 'Choose a bank' });
   }
 
   const db = await getDb();
@@ -359,6 +472,7 @@ router.post('/credit', async (req, res) => {
               stock_transactions.invoice_number,
               stock_transactions.payment,
               stock_transactions.paid_cents,
+              memberships.organization_id,
               (stock_transactions.unit_price * stock_transactions.quantity)::int AS total_cents
        FROM stock_transactions
        JOIN branches ON branches.id = stock_transactions.source_branch_id
@@ -377,6 +491,14 @@ router.post('/credit', async (req, res) => {
     if (sale.rows[0].payment !== 'credit') {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'This invoice is not on credit' });
+    }
+    if (payment === 'transfer') {
+      const bank = await canonicalBank(client, sale.rows[0].organization_id, bankName);
+      if (bank.error) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: bank.error });
+      }
+      bankName = bank.name;
     }
     const collected = await client.query(
       `SELECT COALESCE(SUM(amount_cents), 0)::int AS cents FROM credit_payments WHERE sale_id = $1`,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-export function TransferScreen({ shops, products, units, onChanged }) {
+export function TransferScreen({ shops, products, units, onChanged, openConfirm = 0 }) {
   const unitChoices = units.length > 0 ? units : [
     { code: 'pcs', name: 'Piece' },
     { code: 'carton', name: 'Carton' },
@@ -29,6 +29,14 @@ export function TransferScreen({ shops, products, units, onChanged }) {
   const [notice, setNotice] = useState(null);
   const [error, setError] = useState(null);
   const [revision, setRevision] = useState(0);
+  const [listShop, setListShop] = useState('all');
+  const [listDate, setListDate] = useState('');
+  const [completed, setCompleted] = useState([]);
+  const [listNote, setListNote] = useState(null);
+
+  useEffect(() => {
+    if (openConfirm > 0) setView('confirm');
+  }, [openConfirm]);
 
   useEffect(() => {
     if (shops.some((shop) => shop.name === fromShop)) return;
@@ -67,6 +75,37 @@ export function TransferScreen({ shops, products, units, onChanged }) {
       cancelled = true;
     };
   }, [revision]);
+
+  useEffect(() => {
+    if (view !== 'list') return undefined;
+    const params = new URLSearchParams({
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
+    if (listShop !== 'all') params.set('shop', listShop);
+    if (listDate) params.set('date', listDate);
+    let cancelled = false;
+    fetch(`/api/transfers/completed?${params}`, { credentials: 'include' })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          setCompleted([]);
+          setListNote(data.error || 'Completed transfers are not available yet');
+          return;
+        }
+        setListNote(null);
+        setCompleted(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCompleted([]);
+          setListNote('Completed transfers are not available yet');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, listShop, listDate, revision]);
 
   useEffect(() => {
     if (!fromShop) return undefined;
@@ -147,6 +186,7 @@ export function TransferScreen({ shops, products, units, onChanged }) {
     setNotice(`Ordered ${data.quantity} ${data.unit} of ${data.name} from ${data.fromShop} to ${data.toShop}. Stock moves when ${data.toShop} accepts it.`);
     setView('confirm');
     setRevision((version) => version + 1);
+    onChanged();
   }
 
   async function onAccept(id) {
@@ -169,12 +209,13 @@ export function TransferScreen({ shops, products, units, onChanged }) {
   return (
     <>
       <h1 className="text-2xl font-semibold text-slate-900">Transfer</h1>
-      <p className="mt-1 text-sm text-slate-500">Order stock from one shop to another. It moves when the receiving shop accepts it.</p>
+      <p className="mt-1 text-sm text-slate-500">Order stock from one shop to another. It moves when the receiving shop accepts it. Completed transfers stay in the list.</p>
       {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
       {notice && <p className="mt-4 text-sm text-teal-800">{notice}</p>}
       <div className="mt-6 flex flex-wrap gap-2">
         <button type="button" className={`rounded px-3 py-2 text-sm ${view === 'order' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setView('order')}>Order transfer</button>
         <button type="button" className={`rounded px-3 py-2 text-sm ${view === 'confirm' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setView('confirm')}>Transfers to confirm</button>
+        <button type="button" className={`rounded px-3 py-2 text-sm ${view === 'list' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setView('list')}>Completed transfers</button>
       </div>
       {view === 'order' && (
         <form onSubmit={onOrder} className="mt-4 max-w-lg space-y-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -264,6 +305,7 @@ export function TransferScreen({ shops, products, units, onChanged }) {
                   <div>
                     <p className="font-medium text-slate-900">{item.quantity} {item.unit} of {item.product}</p>
                     <p className="text-sm text-slate-500">{item.from_shop} to {item.to_shop}</p>
+                    <p className="text-sm text-slate-500">Ordered by {item.ordered_by}</p>
                   </div>
                   {canConfirm && (
                     <button type="button" className="rounded bg-slate-900 px-3 py-2 text-sm text-white" onClick={() => onAccept(item.id)}>Accept</button>
@@ -280,11 +322,50 @@ export function TransferScreen({ shops, products, units, onChanged }) {
                 <li key={item.id} className="px-4 py-3">
                   <p className="font-medium text-slate-900">{item.quantity} {item.unit} of {item.product}</p>
                   <p className="text-sm text-slate-500">{item.from_shop} to {item.to_shop}. Waiting for {item.to_shop} to accept.</p>
+                  <p className="text-sm text-slate-500">Ordered by {item.ordered_by}</p>
                 </li>
               ))}
               {outgoing.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No transfer is waiting to leave your shops.</li>}
             </ul>
           </section>
+        </div>
+      )}
+      {view === 'list' && (
+        <div className="mt-4 max-w-3xl space-y-3">
+          <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label className="text-sm text-slate-600">
+              Shop
+              <select className="mt-1 block rounded border border-slate-300 px-3 py-2" value={listShop} onChange={(event) => setListShop(event.target.value)}>
+                <option value="all">All shops</option>
+                {companyShops.map((shop) => (
+                  <option key={shop.name} value={shop.name}>{shop.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-slate-600">
+              Date accepted
+              <input type="date" className="mt-1 block rounded border border-slate-300 px-3 py-2" value={listDate} onChange={(event) => setListDate(event.target.value)} />
+            </label>
+            {listDate && (
+              <button type="button" className="mt-6 h-fit rounded border border-slate-300 px-3 py-2 text-sm" onClick={() => setListDate('')}>Any date</button>
+            )}
+          </div>
+          {listNote && <p className="text-sm text-red-700">{listNote}</p>}
+          <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+            {completed.map((item) => {
+              const when = new Date(item.acceptedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+              return (
+                <li key={item.id} className="px-4 py-3">
+                  <p className="font-medium text-slate-900">{item.quantity} {item.unit} of {item.product}</p>
+                  <p className="text-sm text-slate-500">{when}</p>
+                  <p className="text-sm text-slate-700">{item.fromShop} to {item.toShop}</p>
+                  <p className="text-sm text-slate-500">Ordered by {item.orderedBy}</p>
+                  <p className="text-sm text-slate-500">Accepted by {item.acceptedBy}</p>
+                </li>
+              );
+            })}
+            {!listNote && completed.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No completed transfer matches these filters.</li>}
+          </ul>
         </div>
       )}
     </>

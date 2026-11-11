@@ -15,6 +15,9 @@ import suppliersRouter from './routes/suppliers.js';
 import purchasesRouter from './routes/purchases.js';
 import transfersRouter from './routes/transfers.js';
 import staffRouter from './routes/staff.js';
+import reportsRouter from './routes/reports.js';
+import settingsRouter from './routes/settings.js';
+import notificationsRouter from './routes/notifications.js';
 const db = await getDb();
 const app = express();
 app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
@@ -33,6 +36,9 @@ app.use('/api/suppliers', suppliersRouter);
 app.use('/api/purchases', purchasesRouter);
 app.use('/api/transfers', transfersRouter);
 app.use('/api/staff', staffRouter);
+app.use('/api/reports', reportsRouter);
+app.use('/api/settings', settingsRouter);
+app.use('/api/notifications', notificationsRouter);
 app.get('/api/health', async (_req, res) => {
   const probe = await db.query(`
     SELECT

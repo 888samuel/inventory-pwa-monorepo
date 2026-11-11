@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { BankField } from './bank-field';
 
 const money = (cents) => (Number(cents) / 100).toFixed(2);
 
-export function PurchaseScreen({ shops, products, suppliers, units, onChanged }) {
+export function PurchaseScreen({ shops, products, suppliers, units, banks = [], priceMode = 'dynamic', onChanged }) {
   const unitChoices = units.length > 0 ? units : [
     { code: 'pcs', name: 'Piece' },
     { code: 'carton', name: 'Carton' },
@@ -14,6 +15,11 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
     { code: 'metre', name: 'Metre' },
   ];
   const [view, setView] = useState('record');
+  const [listShop, setListShop] = useState('all');
+  const [listInvoice, setListInvoice] = useState('');
+  const [listDate, setListDate] = useState('');
+  const [completed, setCompleted] = useState([]);
+  const [listNote, setListNote] = useState(null);
   const [shopName, setShopName] = useState(shops[0]?.name || '');
   const [stock, setStock] = useState([]);
   const [supplierQuery, setSupplierQuery] = useState('');
@@ -88,6 +94,47 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
   }, [shopName, revision]);
 
   useEffect(() => {
+    if (view !== 'list') return undefined;
+    const invoice = listInvoice.trim();
+    if (invoice && !/^\d+$/.test(invoice)) {
+      setCompleted([]);
+      setListNote('Invoice number must be a whole number');
+      return undefined;
+    }
+    const params = new URLSearchParams({
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    });
+    if (listShop !== 'all') params.set('shop', listShop);
+    if (invoice) params.set('invoice', invoice);
+    if (listDate) params.set('date', listDate);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch(`/api/purchases/completed?${params}`, { credentials: 'include' })
+        .then(async (response) => {
+          const data = await response.json().catch(() => ({}));
+          if (cancelled) return;
+          if (!response.ok) {
+            setCompleted([]);
+            setListNote(data.error || 'Completed purchases are not available yet');
+            return;
+          }
+          setListNote(null);
+          setCompleted(Array.isArray(data) ? data : []);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setCompleted([]);
+            setListNote('Completed purchases are not available yet');
+          }
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [view, listShop, listInvoice, listDate, revision]);
+
+  useEffect(() => {
     if (view !== 'credit' || !creditShop) return undefined;
     const params = new URLSearchParams({ shop: creditShop });
     if (creditApplied.trim()) params.set('invoice', creditApplied.trim());
@@ -128,9 +175,12 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
   const productChoices = products.filter((item) => !productNeedle || (product && productNeedle === item.name.toLowerCase()) || item.name.toLowerCase().includes(productNeedle));
   const onHand = stock.find((item) => String(item.id) === String(productId));
   const available = onHand?.quantity ?? 0;
-  const unitCents = !product
-    ? 0
-    : (/^\d+(\.\d{1,2})?$/.test(price.trim()) ? Math.round(Number(price.trim()) * 100) : 0);
+  const priceSource = !product
+    ? ''
+    : (priceMode === 'fixed'
+      ? (product.unit_price == null ? '' : (Number(product.unit_price) / 100).toFixed(2))
+      : price.trim());
+  const unitCents = /^\d+(\.\d{1,2})?$/.test(priceSource) ? Math.round(Number(priceSource) * 100) : 0;
   const qtyNumber = Number(qty);
   const totalCents = Number.isInteger(qtyNumber) && qtyNumber > 0 ? unitCents * qtyNumber : 0;
   const paidNowCents = /^\d+(\.\d{1,2})?$/.test(paidNow.trim()) ? Math.round(Number(paidNow.trim()) * 100) : null;
@@ -152,8 +202,15 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
       setError(`This product is bought in ${product.unit}`);
       return;
     }
-    const typedPrice = price.trim();
-    if (!/^\d+(\.\d{1,2})?$/.test(typedPrice)) {
+    const typedPrice = priceMode === 'fixed'
+      ? (product.unit_price == null ? '' : (Number(product.unit_price) / 100).toFixed(2))
+      : price.trim();
+    if (priceMode === 'fixed') {
+      if (product.unit_price == null) {
+        setError('Set a price on this product');
+        return;
+      }
+    } else if (!/^\d+(\.\d{1,2})?$/.test(typedPrice)) {
       setError('Enter a unit price like 45.34');
       return;
     }
@@ -166,8 +223,8 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
         return;
       }
     }
-    if (payment === 'transfer' && !bank.trim()) {
-      setError('Type the bank name');
+    if (payment === 'transfer' && !bank) {
+      setError('Choose a bank');
       return;
     }
     const response = await fetch('/api/purchases', {
@@ -181,7 +238,7 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
         unit,
         quantity,
         payment,
-        bankName: payment === 'transfer' ? bank.trim() : undefined,
+        bankName: payment === 'transfer' ? bank : undefined,
         creditKind: payment === 'credit' ? creditKind : undefined,
         paidNow: payment === 'credit' && creditKind === 'partial' ? paidNow.trim() : undefined,
         unitPrice: typedPrice,
@@ -210,8 +267,8 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
       setError('Choose an invoice');
       return;
     }
-    if (payMethod === 'transfer' && !payBank.trim()) {
-      setError('Type the bank name');
+    if (payMethod === 'transfer' && !payBank) {
+      setError('Choose a bank');
       return;
     }
     const response = await fetch('/api/purchases/credit', {
@@ -222,7 +279,7 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
         purchaseId: payId,
         amount: payAmount.trim(),
         payment: payMethod,
-        bankName: payMethod === 'transfer' ? payBank.trim() : undefined,
+        bankName: payMethod === 'transfer' ? payBank : undefined,
       }),
     });
     const data = await response.json().catch(() => ({}));
@@ -243,11 +300,12 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
   return (
     <>
       <h1 className="text-2xl font-semibold text-slate-900">Purchases</h1>
-      <p className="mt-1 text-sm text-slate-500">Buy into one shop, or pay a supplier on a credit invoice.</p>
+      <p className="mt-1 text-sm text-slate-500">Buy into one shop, look up a completed purchase, or pay a supplier on a credit invoice.</p>
       {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
       {notice && <p className="mt-4 text-sm text-teal-800">{notice}</p>}
       <div className="mt-6 flex flex-wrap gap-2">
         <button type="button" className={`rounded px-3 py-2 text-sm ${view === 'record' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setView('record')}>Record purchase</button>
+        <button type="button" className={`rounded px-3 py-2 text-sm ${view === 'list' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setView('list')}>Completed purchases</button>
         <button type="button" className={`rounded px-3 py-2 text-sm ${view === 'credit' ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white'}`} onClick={() => setView('credit')}>Purchases by credit</button>
       </div>
       {view === 'record' && (
@@ -272,13 +330,7 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
               <button type="button" role="tab" aria-selected={payment === 'credit'} className={`rounded-t px-4 py-2 text-sm ${payment === 'credit' ? '-mb-px border border-b-white border-slate-300 bg-white font-medium' : 'text-slate-600'}`} onClick={() => setPayment('credit')}>Credit</button>
             </div>
             {payment === 'transfer' && (
-              <div id="purchase-bank-panel" role="tabpanel" aria-label="Bank" className="rounded-b border border-t-0 border-slate-300 p-4">
-                <p className="text-sm font-medium text-slate-900">Bank</p>
-                <label className="mt-3 block text-sm text-slate-600">
-                  Bank name
-                  <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={bank} onChange={(event) => setBank(event.target.value)} placeholder="Type the bank name" />
-                </label>
-              </div>
+              <BankField id="purchase-bank-panel" banks={banks} value={bank} onChange={setBank} />
             )}
             {payment === 'credit' && (
               <div role="tabpanel" aria-label="Credit" className="rounded-b border border-t-0 border-slate-300 p-4 text-sm text-slate-600">
@@ -402,13 +454,15 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
             Unit price
             <input
               className="mt-1 w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50"
-              value={product ? price : ''}
+              value={product ? priceSource : ''}
               onChange={(event) => setPrice(event.target.value)}
-              disabled={!product}
+              disabled={!product || priceMode === 'fixed'}
               placeholder="45.34"
             />
-            {product && product.unit_price == null && <span className="mt-1 block text-xs text-slate-500">This product has no price. Type the price for this purchase.</span>}
-            {product && product.unit_price != null && <span className="mt-1 block text-xs text-slate-500">Filled from the product. Change it for this purchase if you need a different price.</span>}
+            {product && priceMode === 'fixed' && product.unit_price == null && <span className="mt-1 block text-xs text-slate-500">Set a price on this product before you buy it.</span>}
+            {product && priceMode === 'fixed' && product.unit_price != null && <span className="mt-1 block text-xs text-slate-500">This price is set on the product.</span>}
+            {product && priceMode === 'dynamic' && product.unit_price == null && <span className="mt-1 block text-xs text-slate-500">This product has no price. Type the price for this purchase.</span>}
+            {product && priceMode === 'dynamic' && product.unit_price != null && <span className="mt-1 block text-xs text-slate-500">Filled from the product. Change it for this purchase if you need a different price.</span>}
           </label>
           <label className="block text-sm text-slate-600">
             Quantity
@@ -459,6 +513,7 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invoice number</p>
                 <p className="text-3xl font-semibold text-slate-900">{row.invoiceNumber}</p>
                 <p className="text-sm text-slate-500">{row.shop} · {row.supplier}</p>
+                <p className="text-sm text-slate-500">{row.createdBy ? `Recorded by ${row.createdBy}` : 'Person was not saved'}</p>
                 <p className="text-sm text-slate-500">{row.quantity} {row.unit} of {row.product}</p>
                 <p className="text-sm text-slate-700">Total {money(row.totalCents)} · Paid {money(row.paidCents)} · Left {money(row.balanceCents)}</p>
                 {row.payments?.length > 0 && (
@@ -484,13 +539,7 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
                       <button type="button" role="tab" aria-selected={payMethod === 'transfer'} className={`rounded-t px-4 py-2 text-sm ${payMethod === 'transfer' ? '-mb-px border border-b-white border-slate-300 bg-white font-medium' : 'text-slate-600'}`} onClick={() => setPayMethod('transfer')}>Transfer</button>
                     </div>
                     {payMethod === 'transfer' && (
-                      <div role="tabpanel" aria-label="Bank" className="rounded-b border border-t-0 border-slate-300 p-4">
-                        <p className="text-sm font-medium text-slate-900">Bank</p>
-                        <label className="mt-3 block text-sm text-slate-600">
-                          Bank name
-                          <input className="mt-1 w-full rounded border border-slate-300 px-3 py-2" value={payBank} onChange={(event) => setPayBank(event.target.value)} placeholder="Type the bank name" />
-                        </label>
-                      </div>
+                      <BankField banks={banks} value={payBank} onChange={setPayBank} />
                     )}
                     <button className="rounded bg-slate-900 px-4 py-2 text-sm text-white" type="submit">Record payment</button>
                   </form>
@@ -498,6 +547,55 @@ export function PurchaseScreen({ shops, products, suppliers, units, onChanged })
               </li>
             ))}
             {creditRows.length === 0 && !creditNote && <li className="px-4 py-3 text-sm text-slate-500">No credit invoice for this shop.</li>}
+          </ul>
+        </div>
+      )}
+      {view === 'list' && (
+        <div className="mt-4 max-w-3xl space-y-3">
+          <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <label className="text-sm text-slate-600">
+              Invoice number
+              <input className="mt-1 block w-36 rounded border border-slate-300 px-3 py-2" value={listInvoice} onChange={(event) => setListInvoice(event.target.value)} placeholder="2" inputMode="numeric" />
+            </label>
+            <label className="text-sm text-slate-600">
+              Shop
+              <select className="mt-1 block rounded border border-slate-300 px-3 py-2" value={listShop} onChange={(event) => setListShop(event.target.value)}>
+                <option value="all">All shops</option>
+                {shops.map((shop) => (
+                  <option key={shop.name} value={shop.name}>{shop.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-slate-600">
+              Date
+              <input type="date" className="mt-1 block rounded border border-slate-300 px-3 py-2" value={listDate} onChange={(event) => setListDate(event.target.value)} />
+            </label>
+            {listDate && (
+              <button type="button" className="mt-6 h-fit rounded border border-slate-300 px-3 py-2 text-sm" onClick={() => setListDate('')}>Any date</button>
+            )}
+          </div>
+          {listNote && <p className="text-sm text-red-700">{listNote}</p>}
+          <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 bg-white">
+            {completed.map((purchase) => {
+              const when = new Date(purchase.boughtAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+              const paymentLabel = purchase.payment === 'transfer'
+                ? `Transfer to ${purchase.bankName}`
+                : purchase.payment === 'credit'
+                  ? 'Credit'
+                  : 'Cash';
+              return (
+                <li key={purchase.id} className="px-4 py-3">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Invoice number</p>
+                  <p className="text-3xl font-semibold text-slate-900">{purchase.invoiceNumber}</p>
+                  <p className="text-sm text-slate-500">{when} · {purchase.shop}</p>
+                  <p className="text-sm text-slate-700">{purchase.supplier}</p>
+                  <p className="text-sm text-slate-500">{purchase.createdBy ? `Recorded by ${purchase.createdBy}` : 'Person was not saved'}</p>
+                  <p className="text-sm text-slate-500">{purchase.quantity} {purchase.unit} of {purchase.product}</p>
+                  <p className="text-sm text-slate-700">{paymentLabel} · Total {money(purchase.totalCents)} · Paid {money(purchase.paidCents)}{purchase.balanceCents > 0 ? ` · Left ${money(purchase.balanceCents)}` : ''}</p>
+                </li>
+              );
+            })}
+            {!listNote && completed.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No completed purchases match these filters.</li>}
           </ul>
         </div>
       )}

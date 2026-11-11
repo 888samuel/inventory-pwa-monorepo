@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getDb } from '../db.js';
+import { priceModeFor } from '../orgSettings.js';
 const router = Router();
 router.get('/', async (req, res) => {
     const userId = req.cookies.userId;
@@ -48,6 +49,10 @@ router.post('/', async (req, res) => {
     }
 
     const organizationId = membership.rows[0].organization_id;
+    const priceMode = await priceModeFor(db, organizationId);
+    if (priceMode === 'fixed' && cents == null) {
+      return res.status(400).json({ error: 'Enter a price. Prices are set on the product.' });
+    }
     const unitRow = await db.query(`SELECT id FROM units WHERE code = $1`, [unit]);
     if (unitRow.rows.length === 0) {
       return res.status(400).json({ error: 'Choose a unit from the list' });
@@ -89,6 +94,7 @@ router.post('/import', async (req, res) => {
       return res.status(403).json({ error: 'You are not a member of any organization' });
     }
     const organizationId = membership.rows[0].organization_id;
+    const priceMode = await priceModeFor(client, organizationId);
     const errors = [];
     const ready = [];
     for (const item of rows) {
@@ -99,6 +105,10 @@ router.post('/import', async (req, res) => {
       const price = String(item.price ?? '').trim();
       if (!sku || !name || !unit) {
         errors.push({ row, message: 'SKU, name, and unit are required' });
+        continue;
+      }
+      if (priceMode === 'fixed' && price === '') {
+        errors.push({ row, message: 'Enter a price. Prices are set on the product.' });
         continue;
       }
       let cents = null;
